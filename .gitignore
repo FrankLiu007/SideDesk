@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.sqlite
+.env
+data/
+node_modules/
+.svelte-kit/
+extension/dist/

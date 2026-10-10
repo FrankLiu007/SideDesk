@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+sqlalchemy
+httpx[socks]
+apscheduler
+pydantic
+pydantic-settings
+pytest
