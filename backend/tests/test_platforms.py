@@ -101,16 +101,24 @@ class _FakeSearch:
 
 def test_refresh_deletes_open_archived_leads_and_skips_them_on_search(monkeypatch):
     created: list[int] = []
-    cursors: dict[int, datetime | None] = {}
+    monitor_id = None
     fake = _FakeSearch()
     monkeypatch.setattr("app.jobs.adapter_for", lambda platform_id, client: fake if platform_id == "reddit" else None)
     try:
         with TestClient(app):
             with SessionLocal() as session:
-                project = session.scalar(select(Project).where(Project.slug == "thinknote"))
+                project = session.scalar(select(Project).where(Project.slug == "default"))
                 assert project is not None
-                for monitor in session.scalars(select(Monitor).where(Monitor.project_id == project.id)).all():
-                    cursors[monitor.id] = monitor.cursor_at
+                monitor = Monitor(
+                    project_id=project.id,
+                    platform_id="reddit",
+                    kind="keyword",
+                    content="paste tables",
+                    enabled=True,
+                )
+                session.add(monitor)
+                session.flush()
+                monitor_id = monitor.id
                 archived = Lead(
                     project_id=project.id,
                     platform_id="reddit",
@@ -152,9 +160,9 @@ def test_refresh_deletes_open_archived_leads_and_skips_them_on_search(monkeypatc
                 assert live is not None
                 created.append(live.id)
                 monitors = session.scalars(select(Monitor).where(Monitor.platform_id == "reddit")).all()
-                assert monitors
-                assert all(monitor.cursor_at == datetime(2026, 10, 2, 8, 0, 0) for monitor in monitors)
-            assert len(fake.queries) == len(monitors)
+                assert len(monitors) == 1
+                assert monitors[0].cursor_at == datetime(2026, 10, 2, 8, 0, 0)
+            assert fake.queries == ["paste tables"]
     finally:
         with SessionLocal() as session:
             for lead_id in created:
@@ -167,11 +175,10 @@ def test_refresh_deletes_open_archived_leads_and_skips_them_on_search(monkeypatc
                 for message in session.scalars(select(DraftMessage).where(DraftMessage.lead_id == lead.id)).all():
                     session.delete(message)
                 session.delete(lead)
-            for monitor_id, cursor in cursors.items():
-                monitor = session.get(Monitor, monitor_id)
-                if monitor is not None:
-                    monitor.cursor_at = cursor
-                    monitor.last_error = None
+            if monitor_id is not None:
+                row = session.get(Monitor, monitor_id)
+                if row is not None:
+                    session.delete(row)
             session.commit()
 
 

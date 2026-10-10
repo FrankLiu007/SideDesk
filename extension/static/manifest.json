@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "营销跟进台",
+  "name": "SideDesk",
   "version": "0.2.0",
   "description": "打开是待办。点一条后，左边是原帖，右边做这一条。",
   "permissions": ["sidePanel", "tabs", "clipboardWrite"],
@@ -19,7 +19,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "打开跟进台",
+    "default_title": "打开 SideDesk",
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png"

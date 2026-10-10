@@ -1,7 +1,5 @@
 from dataclasses import dataclass
 
-from app.catalog import THINKNOTE_SLUG
-from app.drafts import sanitize_draft
 from app.models import Lead, Project
 
 WINDOW = 16
@@ -111,8 +109,5 @@ def post_block(lead: Lead) -> str:
     return "\n".join(lines)
 
 
-def apply_adopted(project: Project, body: str) -> str:
-    text = body.strip()
-    if project.slug == THINKNOTE_SLUG:
-        return sanitize_draft(text)
-    return text
+def apply_adopted(_project: Project, body: str) -> str:
+    return body.strip()

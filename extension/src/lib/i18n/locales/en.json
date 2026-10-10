@@ -1,7 +1,7 @@
 {
 	"brand": {
-		"name": "Follow-up desk",
-		"mark": "F"
+		"name": "SideDesk",
+		"mark": "S"
 	},
 	"nav": {
 		"inbox": "To-do",
@@ -34,7 +34,7 @@
 		"deleted": "Reply gone"
 	},
 	"errors": {
-		"offline": "The desk is not running. In marketing-desk/backend, run ./start-backend.sh",
+		"offline": "SideDesk is not running. In the backend directory, run ./start-backend.sh",
 		"request": "Request failed",
 		"save": "Could not save",
 		"update": "Could not update",

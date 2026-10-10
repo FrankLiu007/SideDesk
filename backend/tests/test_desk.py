@@ -5,33 +5,33 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.ai import AiError, complete
-from app.config import settings
 from app.database import SessionLocal, _migrate_ai_sources
 from app.diff import ReplySnapshot, diff_reply
-from app.drafts import sanitize_draft
 from app.identity import reddit_ids
 from app.main import app
 from app.models import AiSource, Draft, DraftMessage, Lead, MyReply, Project, ReplyEvent, Setting
 from app.reddit import parse_submission
 from app.seed_parse import parse_seed_markdown
 
+_SEED = """
+### 1. 公式丢了
+原话：整段复制进去就消失。
+https://www.reddit.com/r/ChatGPT/comments/1j43zuh/title/
 
-def test_sanitize_strips_site_and_adds_store_phrase():
-    english = sanitize_draft("Paste with ThinkNote. https://thinknote.pro/word")
-    chinese = sanitize_draft("用 ThinkNote 粘贴。说明在 thinknote.pro/word")
-    assert "thinknote.pro" not in english
-    assert "thinknote.pro" not in chinese
-    assert "Search ThinkNote in the Chrome Web Store." in english
-    assert "Chrome 网上应用店搜索 ThinkNote。" in chinese
+```reply
+先把公式单独贴一次。
+```
+"""
 
 
-def test_seed_file_has_thirty_drafts_without_site_url():
-    leads = parse_seed_markdown(open(settings.seed_path, encoding="utf-8").read())
-    assert len(leads) == 30
-    assert {item.platform_id for item in leads} >= {"reddit", "bilibili", "youtube", "v2ex"}
-    for item in leads:
-        assert "thinknote.pro" not in item.draft
-        assert "ThinkNote" in item.draft
+def test_parse_seed_markdown_reads_link_and_draft():
+    leads = parse_seed_markdown(_SEED)
+    assert len(leads) == 1
+    assert leads[0].platform_id == "reddit"
+    assert leads[0].external_id == "1j43zuh"
+    assert leads[0].excerpt == "整段复制进去就消失。"
+    assert leads[0].draft == "先把公式单独贴一次。"
+    assert leads[0].done is False
 
 
 def test_reddit_comment_url():
@@ -66,32 +66,53 @@ def test_parse_submission_reads_post_body():
 
 
 def test_match_lead_ignores_reddit_host_and_query():
-    with TestClient(app) as client:
-        leads = client.get("/api/leads").json()
-        reddit = next(lead for lead in leads if lead["platform_id"] == "reddit")
-        varied = reddit["url"].replace("www.reddit.com", "old.reddit.com") + "?utm_source=desk"
-        matched = client.get("/api/leads/match", params={"url": varied}).json()
-        assert matched["lead"]["id"] == reddit["id"]
-        assert matched["on_comment"] is False
-        assert matched["comment_url"] == ""
-        missing = client.get(
-            "/api/leads/match",
-            params={"url": "https://www.reddit.com/r/ChatGPT/comments/zzzzzzz/no_such_post/"},
-        ).json()
-        assert missing["lead"] is None
-        assert missing["on_comment"] is False
-        assert missing["comment_url"] == ""
+    lead_id = None
+    try:
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/leads",
+                json={
+                    "url": "https://www.reddit.com/r/ChatGPT/comments/1j43zuh/title/",
+                    "title": "公式丢了",
+                },
+            )
+            assert created.status_code == 201
+            lead_id = created.json()["id"]
+            varied = "https://old.reddit.com/r/ChatGPT/comments/1j43zuh/title/?utm_source=desk"
+            matched = client.get("/api/leads/match", params={"url": varied}).json()
+            assert matched["lead"]["id"] == lead_id
+            assert matched["on_comment"] is False
+            assert matched["comment_url"] == ""
+            missing = client.get(
+                "/api/leads/match",
+                params={"url": "https://www.reddit.com/r/ChatGPT/comments/zzzzzzz/no_such_post/"},
+            ).json()
+            assert missing["lead"] is None
+            assert missing["on_comment"] is False
+            assert missing["comment_url"] == ""
+    finally:
+        if lead_id is not None:
+            _delete_lead(lead_id)
 
 
 def test_lead_source_uses_saved_excerpt_unless_the_site_can_be_embedded():
     created_id = None
+    social_id = None
     try:
         with TestClient(app) as client:
-            leads = client.get("/api/leads").json()
-            social = next(lead for lead in leads if lead["platform_id"] == "bilibili")
-            source = client.get(f"/api/leads/{social['id']}/source").json()
+            social = client.post(
+                "/api/leads",
+                json={
+                    "url": "https://www.bilibili.com/video/BV1sourceVid",
+                    "title": "视频",
+                    "excerpt": "对方说打不开",
+                },
+            )
+            assert social.status_code == 201
+            social_id = social.json()["id"]
+            source = client.get(f"/api/leads/{social_id}/source").json()
             assert source["embed"] is False
-            assert source["body"] == social["excerpt"]
+            assert source["body"] == "对方说打不开"
             created = client.post(
                 "/api/leads",
                 json={"url": "https://example.com/posts/word-math", "title": "外站", "excerpt": "对方说打不开"},
@@ -102,12 +123,10 @@ def test_lead_source_uses_saved_excerpt_unless_the_site_can_be_embedded():
             assert other["embed"] is True
             assert other["body"] == "对方说打不开"
     finally:
+        if social_id is not None:
+            _delete_lead(social_id)
         if created_id is not None:
-            with SessionLocal() as session:
-                row = session.get(Lead, created_id)
-                if row is not None:
-                    session.delete(row)
-                    session.commit()
+            _delete_lead(created_id)
 
 
 def test_diff_reply_baseline_then_new_child():
@@ -125,35 +144,40 @@ def test_diff_reply_baseline_then_new_child():
     assert kinds == ["deleted"]
 
 
-def test_api_seeds_leads_and_skips_unrefreshable_platforms():
-    with TestClient(app) as client:
-        assert client.get("/api/health").status_code == 200
-        leads = client.get("/api/leads").json()
-        assert len(leads) == 30
-        assert all("thinknote.pro" not in lead["draft"] for lead in leads)
-        projects = client.get("/api/projects").json()
-        thinknote = next(item for item in projects if item["name"] == "ThinkNote")
-        assert thinknote["active"] is True
-        assert "thinknote.pro/word" in thinknote["followup_zh"]
-        duplicate = client.post(
-            "/api/leads",
-            json={"url": "https://www.v2ex.com/t/1190583", "title": "已存在"},
-        )
-        assert duplicate.status_code == 409
-        created = client.post(
-            "/api/leads",
-            json={"url": "https://www.bilibili.com/video/BV1testVideo", "title": "视频"},
-        )
-        assert created.status_code == 201
-        client.post(
-            f"/api/leads/{created.json()['id']}/replies",
-            json={"comment_url": "https://www.bilibili.com/video/BV1testVideo", "body": "已回"},
-        )
-        refreshed = client.post("/api/refresh").json()
-        assert refreshed["replies_checked"] == 1
-        assert refreshed["new_events"] == 0
-        replies = client.get("/api/replies").json()
-        assert replies[0]["last_error"] == "这个平台还不能自动看追问"
+def test_api_starts_empty_and_skips_unrefreshable_platforms():
+    created_id = None
+    try:
+        with TestClient(app) as client:
+            assert client.get("/api/health").status_code == 200
+            assert client.get("/api/leads").json() == []
+            projects = client.get("/api/projects").json()
+            default = next(item for item in projects if item["name"] == "默认")
+            assert default["active"] is True
+            assert default["followup_zh"] == ""
+            assert default["background"] == ""
+            created = client.post(
+                "/api/leads",
+                json={"url": "https://www.bilibili.com/video/BV1testVideo", "title": "视频"},
+            )
+            assert created.status_code == 201
+            created_id = created.json()["id"]
+            duplicate = client.post(
+                "/api/leads",
+                json={"url": "https://www.bilibili.com/video/BV1testVideo", "title": "已存在"},
+            )
+            assert duplicate.status_code == 409
+            client.post(
+                f"/api/leads/{created_id}/replies",
+                json={"comment_url": "https://www.bilibili.com/video/BV1testVideo", "body": "已回"},
+            )
+            refreshed = client.post("/api/refresh").json()
+            assert refreshed["replies_checked"] == 1
+            assert refreshed["new_events"] == 0
+            replies = client.get("/api/replies").json()
+            assert replies[0]["last_error"] == "这个平台还不能自动看追问"
+    finally:
+        if created_id is not None:
+            _delete_lead(created_id)
 
 
 def _delete_lead(lead_id: int) -> None:
@@ -319,15 +343,15 @@ def _configure_ai(client: TestClient, base: str, model: str, key: str, name: str
     return selected.json()
 
 
-def _thinknote_id(client: TestClient) -> int:
+def _default_project_id(client: TestClient) -> int:
     projects = client.get("/api/projects").json()
-    return next(item["id"] for item in projects if item["name"] == "ThinkNote")
+    return next(item["id"] for item in projects if item["name"] == "默认")
 
 
 def _delete_project(project_id: int) -> None:
     with SessionLocal() as session:
         project = session.get(Project, project_id)
-        if project is None or project.slug == "thinknote":
+        if project is None or project.slug == "default":
             return
         session.delete(project)
         session.commit()
@@ -392,18 +416,17 @@ def test_ai_settings_hide_the_key_and_projects_stay_separate(monkeypatch):
             system = captured[-1]["json"]["messages"][0]["content"]
             assert "手改稿KEEP" in system
             assert "原文甲" in system
-            assert "Word 加载项商店还在审核" in system
+            assert "先跟着项目背景说话" in system
             assert captured[-1]["headers"]["Authorization"] == f"Bearer {secret}"
             assert captured[-1]["url"] == "https://example.com/v1/chat/completions"
             assert "先别出稿" in captured[-1]["json"]["messages"][-1]["content"]
 
             adopted = client.post(
                 f"/api/leads/{lead_id}/draft/adopt",
-                json={"body": "用 ThinkNote。 https://thinknote.pro/word"},
+                json={"body": "说明在 https://example.com/docs"},
             )
             assert adopted.status_code == 200
-            assert "thinknote.pro" not in adopted.json()["draft"]
-            assert "Chrome 网上应用店搜索 ThinkNote。" in adopted.json()["draft"]
+            assert adopted.json()["draft"] == "说明在 https://example.com/docs"
 
             other = client.post(
                 "/api/projects",
@@ -424,7 +447,6 @@ def test_ai_settings_hide_the_key_and_projects_stay_separate(monkeypatch):
             client.post(f"/api/leads/{other_lead_id}/chat", json={"message": "写一条", "draft": ""})
             other_system = captured[-1]["json"]["messages"][0]["content"]
             assert "BETA_BACKGROUND_ONLY" in other_system
-            assert "Word 加载项商店还在审核" not in other_system
             assert "原文乙" in other_system
             assert "原文甲" not in other_system
             assert "线索甲" not in other_system
@@ -433,9 +455,8 @@ def test_ai_settings_hide_the_key_and_projects_stay_separate(monkeypatch):
                 f"/api/leads/{other_lead_id}/draft/adopt",
                 json={"body": "文档在 https://example.com/docs"},
             )
-            assert "https://example.com/docs" in kept.json()["draft"]
-            assert "Chrome 网上应用店" not in kept.json()["draft"]
-            client.post(f"/api/projects/{_thinknote_id(client)}/activate")
+            assert kept.json()["draft"] == "文档在 https://example.com/docs"
+            client.post(f"/api/projects/{_default_project_id(client)}/activate")
     finally:
         if lead_id is not None:
             _delete_lead(lead_id)
@@ -444,7 +465,7 @@ def test_ai_settings_hide_the_key_and_projects_stay_separate(monkeypatch):
         if other_project_id is not None:
             _delete_project(other_project_id)
         with TestClient(app) as client:
-            client.post(f"/api/projects/{_thinknote_id(client)}/activate")
+            client.post(f"/api/projects/{_default_project_id(client)}/activate")
         _clear_ai()
 
 
@@ -504,7 +525,7 @@ def test_long_chat_keeps_recent_turns_and_drops_failed_messages(monkeypatch):
         if lead_id is not None:
             _delete_lead(lead_id)
             with TestClient(app) as client:
-                client.post(f"/api/projects/{_thinknote_id(client)}/activate")
+                client.post(f"/api/projects/{_default_project_id(client)}/activate")
         _clear_ai()
 
 

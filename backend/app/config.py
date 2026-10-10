@@ -3,7 +3,6 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[2]
-CHATPRO = ROOT.parent
 
 
 class Settings(BaseSettings):
@@ -19,7 +18,7 @@ class Settings(BaseSettings):
     reddit_client_id: str = ""
     reddit_client_secret: str = ""
     reddit_username: str = ""
-    seed_path: str = str(CHATPRO / "marketing" / "reply-drafts-user-complaints.md")
+    seed_path: str = ""
 
     @property
     def database_path(self) -> Path:

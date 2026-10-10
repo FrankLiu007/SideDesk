@@ -1,5 +1,5 @@
 {
-  "name": "marketing-desk-extension",
+  "name": "sidedesk-extension",
   "private": true,
   "type": "module",
   "scripts": {

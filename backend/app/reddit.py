@@ -7,7 +7,7 @@ from app.diff import ReplySnapshot
 from app.identity import reddit_ids
 from app.timeutil import as_utc
 
-USER_AGENT_APP = "marketing-desk:followup:1.0"
+USER_AGENT_APP = "SideDesk:followup:1.0"
 
 
 class RedditNotConfigured(RuntimeError):

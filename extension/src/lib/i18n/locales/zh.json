@@ -1,7 +1,7 @@
 {
 	"brand": {
-		"name": "营销跟进台",
-		"mark": "跟"
+		"name": "SideDesk",
+		"mark": "S"
 	},
 	"nav": {
 		"inbox": "待办",
@@ -34,7 +34,7 @@
 		"deleted": "回复没了"
 	},
 	"errors": {
-		"offline": "跟进台没开。先在 marketing-desk/backend 运行 ./start-backend.sh",
+		"offline": "SideDesk 没开。先在 backend 目录运行 ./start-backend.sh",
 		"request": "请求失败",
 		"save": "保存失败",
 		"update": "更新失败",

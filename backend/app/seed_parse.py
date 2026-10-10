@@ -1,7 +1,6 @@
 import re
 from dataclasses import dataclass
 
-from app.drafts import sanitize_draft
 from app.platforms.parse import parse_link
 
 _HEADING = re.compile(r"^###\s+(.+)$", re.MULTILINE)
@@ -40,7 +39,7 @@ def parse_seed_markdown(text: str) -> list[SeedLead]:
                 excerpt = found.group(1).strip()
                 break
         fence = _FENCE.search(chunk)
-        draft = sanitize_draft(fence.group(1)) if fence else ""
+        draft = fence.group(1).strip() if fence else ""
         done = "- [x]" in chunk.lower() or "- [X]" in chunk
         leads.append(
             SeedLead(

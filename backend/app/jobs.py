@@ -4,9 +4,9 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.catalog import THINKNOTE_SLUG, active_project, seed_leads
+from app.catalog import active_project, seed_leads
 from app.config import settings
-from app.models import Draft, DraftMessage, Lead, Monitor, MyReply, Project, ReplyEvent
+from app.models import Draft, DraftMessage, Lead, Monitor, MyReply, ReplyEvent
 from app.platforms import adapter_for, reply_adapter_for
 from app.platforms.base import SearchAdapter
 from app.platforms.parse import parse_link
@@ -20,14 +20,13 @@ reddit = RedditClient()
 
 
 def import_seed_file(session: Session, path: Path | None = None) -> int:
-    seed_path = path or Path(settings.seed_path)
-    if not seed_path.is_file():
+    raw = settings.seed_path.strip()
+    seed_path = path or (Path(raw) if raw else None)
+    if seed_path is None or not seed_path.is_file():
         return 0
     if session.scalar(select(Lead.id).limit(1)) is not None:
         return 0
-    project = session.scalar(select(Project).where(Project.slug == THINKNOTE_SLUG))
-    if project is None:
-        return 0
+    project = active_project(session)
     return seed_leads(session, seed_path.read_text(encoding="utf-8"), project.id)
 
 

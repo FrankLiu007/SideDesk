@@ -21,7 +21,7 @@ async def lifespan(_app: FastAPI):
     stop_scheduler()
 
 
-app = FastAPI(title="营销跟进台", lifespan=lifespan)
+app = FastAPI(title="SideDesk", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5175", "http://localhost:5175"],
