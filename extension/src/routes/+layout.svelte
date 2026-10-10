@@ -44,9 +44,14 @@
 <div class="min-h-screen bg-paper">
 	<header class="sticky top-0 z-10 border-b border-stone-800 bg-ink text-stone-100">
 		<div class="flex items-center gap-2 px-3 py-2">
-			<div class="grid size-7 shrink-0 place-items-center rounded-lg bg-teal-600 text-xs font-semibold text-white">
-				{$_('brand.mark')}
-			</div>
+			<svg class="size-7 shrink-0" viewBox="14 18 100 92" aria-hidden="true">
+				<rect width="66" height="92" rx="14" fill="#F6F3EE" />
+				<rect x="12" y="22" width="42" height="8" rx="4" fill="#D6D3D1" />
+				<rect x="12" y="38" width="30" height="8" rx="4" fill="#E7E5E4" />
+				<rect x="12" y="54" width="36" height="8" rx="4" fill="#E7E5E4" />
+				<rect x="72" width="28" height="92" rx="14" fill="#0D9488" />
+				<circle cx="86" cy="22" r="6" fill="#F6F3EE" />
+			</svg>
 			<p class="min-w-0 flex-1 text-sm font-semibold tracking-tight">{$_('brand.name')}</p>
 			{#if desk.projects.length}
 				<label class="sr-only" for="active-project">{$_('nav.currentProject')}</label>
